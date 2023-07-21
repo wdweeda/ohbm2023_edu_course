@@ -37,12 +37,25 @@ if(length(grep('--help',tolower(args)))>0) {
 
 #check valid args (too few or too many)
 if(length(args)>0) {
-  if(!(length(grep('--zstat',args)) == 1 & length(grep('--cluster',args)) == 1)) {
+  if(!( (length(grep('--zstat',args)) == 1 | length(grep('--tstat',args))==1 ) & length(grep('--cluster',args)) == 1) ) {
     cat('Compulsory arguments missing or multiple equal arguments found\n')
     args <- character(0)
     valid <- FALSE
   }
+  
+  if(length(grep('--tstat',args))==1 & length(grep('--df',args) == 0)) {
+    valid <- FALSE
+    cat('df for tstat missing\n')
+  }
+  
+  if((length(grep('--zstat',args)) == 1 | length(grep('--tstat',args))==1)) {
+    valid <- FALSE
+    cat('both tstat and zstat are given as arguments, please give only one\n')
+  }
+  
+  
 }
+
 
 #print usage to console  
 if(length(args)==0) {
@@ -51,8 +64,9 @@ if(length(args)==0) {
   cat('Rscript get_tdp.R --zstat=<filename> --cluster=<filename> [options]\n')
   cat('\n')
   cat('Compulsory arguments:\n')
-  cat('--zstat         filename of z-statistics file (nifti)\n')
+  cat('--zstat/tstat   filename of z-statistics file (nifti)\n')
   cat('--cluster       filename of cluster-index file (nifti)\n')
+  cat('--df            if tstat is specified, df is also needed\n')
   cat('\n')
   cat('Optional arguments:\n')
   cat('[method]\n')
@@ -84,14 +98,42 @@ if(valid) {
   
   if(!quiet) cat(paste0('Calculated assuming Simes\' inequality with ',round((1-ari_alpha)*100,1),'% confidence.\n\n'))
   
+  #check what data to be red in
+  
+  
   #read in z-stats file
-  zfile <- strsplit(args[grep('--zstat',args)],'\\=')[[1]][2]
-  znifti <- try(RNifti::readNifti(zfile))
+  if(length(grep('--zstat',args)) == 1) {
+    zfile <- strsplit(args[grep('--zstat',args)],'\\=')[[1]][2]
+    znifti <- try(RNifti::readNifti(zfile))
+    if(class(znifti)[1]=='try-error') stop('Z-statistics file not found\n')
+    zstat <- znifti[]
+    statdata <- zstat
+    
+    #make p-values
+    if(!quiet) cat(' > converted z-stats to 2-sided p-values\n')
+    pvalues2 <- (1-pnorm(abs(zstat)))*2
+    #print(summary(pvalues2))
+    
+    #print(summary(zstat))
+  }
   
-  if(class(znifti)[1]=='try-error') stop('Z-statistics file not found\n')
+  if(length(grep('--tstat',args)) == 1) {
+    tfile <- strsplit(args[grep('--tstat',args)],'\\=')[[1]][2]
+    tnifti <- try(RNifti::readNifti(tfile))
+    if(class(znifti)[1]=='try-error') stop('Z-statistics file not found\n')
+    tstat <- tnifti[]
+    statdata <- tstat
+    
+    #make p-values
+    if(!quiet) cat(' > converted z-stats to 2-sided p-values\n')
+    pvalues2 <- (1-pt(abs(tstat),df = as.numeric(trsplit(args[grep('--df',args)],'\\=')[[1]][2])))*2
+    #print(summary(pvalues2))
+    
+    #print(summary(tstat))
+  }
   
-  zstat <- znifti[]
-  #print(summary(zstat))
+  
+  
   
   #read in cluster file
   cfile <- strsplit(args[grep('--cluster',args)],'\\=')[[1]][2]
@@ -100,10 +142,7 @@ if(valid) {
   if(class(cnifti)[1]=='try-error') stop('Cluster mask file not found\n')
   cstat <- cnifti[]
   
-  #make p-values
-  if(!quiet) cat(' > converted z-stats to 2-sided p-values\n')
-  pvalues2 <- (1-pnorm(abs(zstat)))*2
-  #print(summary(pvalues2))
+ 
   
   #make mask 
   mask <- zstat!=0

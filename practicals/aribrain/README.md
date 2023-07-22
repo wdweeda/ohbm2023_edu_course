@@ -16,7 +16,7 @@ Go [here](https://posit.co/download/rstudio-desktop/) to download R and Rstudio 
 ### Step 2, Installing ARIbrain
 You can install the stable version of ARIbrain from [CRAN](https://cran.r-project.org/web/packages/ARIbrain/), or use the *Tools > Install packages* option from Rstudio (select CRAN Repository and search for ARIbrain, leave the install dependencies option checked), or use the `install.packages('ARIbrain')` command in R/Rstudio. The development version of ARIbrain can be downloaded from this GitHub repository using the 'devtools' package. First install this package using `install.packages('devtools')`, and then install ARIbrain using the following command: `devtools::install_github('wdweeda/ARIbrain')`.
 
-## ARIbrain interactive exporation app
+## ARIbrain interactive exploration app (beta)
 In addition to the ARIbrain package, we have an ARIbrain-app that can be used, in addition to the normal ARI analysis, to interactively explore all clusters (for example, you can apply a different threshold for each cluster separately). For this we need an additional package `shiny` and `shinyjs`.
 
 To do this download the files in the 'aribrain_app' directory and in Rstudio run: `setwd('~/aribrain_appdir')` (where '~/aribrain_appdir' is the directory you just downloaded these files to. Then run: `shiny::runApp('~/aribrain_appdir/aribrain_app')`. You will now get in interactive mode.

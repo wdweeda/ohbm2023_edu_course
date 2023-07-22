@@ -88,9 +88,8 @@ observeMenu4 <- function(input, output, session) {
       ),
       tags$div(
         style = "display: inline-block;",
-        helpText("Please press the button for an interactive 
-                  thresholding, where you can change the size 
-                  or the TDP of each cluster.")
+        helpText("Please press the button for an interactive thresholding, 
+                  where you can change the size of each cluster.")
       )
     )
   })
@@ -114,14 +113,11 @@ observeMenu4 <- function(input, output, session) {
     
     # compute p-values
     pval <- fileInfo$data
-    
     if(input$twosidedTest == TRUE) { # two-sided test
       
       if(fileInfo$type == "p") {
         pval[fileInfo$mask == 0] <- 1
-        if(input$twosided == FALSE) {
-          pval <- 2 * pval
-        }
+        if(input$twosided == FALSE) { pval <- 2 * pval }
       } else if(fileInfo$type == "t") {
         pval[fileInfo$mask == 0] <- 0
         if (input$tdf > 0) {
@@ -138,9 +134,7 @@ observeMenu4 <- function(input, output, session) {
       
       if(fileInfo$type == "p") {
         pval[fileInfo$mask == 0] <- 1
-        if(input$twosided == TRUE) {
-          pval <- pval/2
-        }
+        if(input$twosided == TRUE) { pval <- pval/2 }
       } else if(fileInfo$type == "t") {
         pval[fileInfo$mask == 0] <- 0
         if (input$tdf > 0) {
@@ -164,16 +158,9 @@ observeMenu4 <- function(input, output, session) {
     # compute size of the multiple testing problem
     m      <- length(indexp)
     
-    fileInfo$m      <<- m
-    fileInfo$indexp <<- indexp
-    
     # compute the whole-brain TDP, i.e. min(TDP)
     hom    <- hommel::hommel(p, simes = simes)
     mintdp <- hommel::tdp(hom, alpha = alpha)
-    
-    # update min(TDP)
-    fileInfo$mintdp <<- mintdp
-    
     # return warning if there are no activations
     if(mintdp == 0) {
       shinyjs::disable("CFTthres")
@@ -187,26 +174,24 @@ observeMenu4 <- function(input, output, session) {
       return(NULL)
     }
     
-    # update the concentration set threshold
-    fileInfo$conc_thres <<- hommel::concentration(hom, alpha = alpha)
-    
     # compute h
     halpha      <- hommel:::findHalpha(hom@jumpalpha, alpha = alpha, m)
     simeshalpha <- hom@simesfactor[halpha+1]
+    conc_thres  <- hommel::concentration(hom, alpha = alpha)
     rm(hom)
     
     # sort p-values in ascending order
-    ordp  <- order(p)
-    ordp  <- as.integer(ordp)   # sorted orders (starts from 1)
+    ordp    <- order(p)
+    ordp    <- as.integer(ordp)   # sorted orders (starts from 1)
     # find the sorting ranks for unsorted p-values
-    rankp <- integer(m)
+    rankp   <- integer(m)
     rankp[ordp] <- 1:m
-    rankp <- as.integer(rankp)  # sorting ranks (starts from 1)
+    rankp   <- as.integer(rankp)  # sorting ranks (starts from 1)
     
     # create 3D whole-brain mask of unsorted orders (starts from 1)
-    maskI  <- array(0, fileInfo$header$dim[2:4])
+    maskI   <- array(0, fileInfo$header$dim[2:4])
     maskI[indexp] <- 1:m
-    maskI  <- as.integer(maskI)
+    maskI   <- as.integer(maskI)
     
     # find the adjacency list
     adj     <- ARIbrain::findAdjList(maskI, as.integer(indexp-1), fileInfo$header$dim[2:4], m, conn)
@@ -215,21 +200,23 @@ observeMenu4 <- function(input, output, session) {
     tdps    <- ARIbrain::forestTDP(m, halpha, alpha, simeshalpha, p, reslist$SIZE, reslist$ROOT, reslist$CHILD)
     stcs    <- ARIbrain::queryPreparation(m, reslist$ROOT, tdps, reslist$CHILD)
     
-    # update necessary arguments
-    fileInfo$reslist <<- reslist
-    fileInfo$tdps    <<- tdps
-    fileInfo$stcs    <<- stcs
+    # update fileInfo with necessary arguments
+    fileInfo$m          <<- m
+    fileInfo$mintdp     <<- mintdp
+    fileInfo$indexp     <<- indexp
+    fileInfo$reslist    <<- reslist
+    fileInfo$tdps       <<- tdps
+    fileInfo$stcs       <<- stcs
+    fileInfo$conc_thres <<- conc_thres
     
     # initialize a vector for marking found clusters
     marks   <- integer(m)
-    
-    # initialize cluster image: >0 for voxels within clusters
+    # initialize cluster image: >0 for voxels within clusters & gradient map
     clusimg <- array(0, fileInfo$header$dim[2:4])
-    # initialize the gradient map
     gradmap <- array(0, fileInfo$header$dim[2:4])
     
     # compute voxel-wise max(TDP) bounds, i.e., TDP gradient map
-    gammas  <- seq(0, 1, 0.01)  # TDP thresholds
+    gammas <- seq(0, 1, 0.01)  # TDP thresholds
     for (g in gammas) {
       # form clusters
       clusterlist <- ARIbrain::answerQuery(g, stcs, reslist$SIZE, marks, tdps, reslist$CHILD)
@@ -239,15 +226,14 @@ observeMenu4 <- function(input, output, session) {
       gradmap <- pmax(gradmap, (clusimg > 0)*g)
       clusimg[out_ids] <- 0
       
-      incProgress(1/length(gammas), 
-                  message = "Running analysis...", 
+      incProgress(1/length(gammas), message = "Running analysis...", 
                   detail = paste0(round(g*100), "% completed"))
     }
     
-    # update the gradient map
+    # update fileInfo with the gradient map
     fileInfo$grad_map <<- gradmap
   })
-
+  
   # ---------- (above) run ARI analysis (above) ---------- #
   # ------------------------------------------------------ #
   
@@ -294,9 +280,9 @@ observeMenu4 <- function(input, output, session) {
       z_001  <- round(-qnorm(0.001), 2)
       z_conc <- round(-qnorm(fileInfo$conc_thres), 2)
       if(fileInfo$type == "p") {
-        z_max  <- round(-qnorm(min(pval[fileInfo$mask != 0 & pval > 0])), 2)
+        z_max  <- round(-qnorm(min(pval[fileInfo$mask!=0])), 2)
       } else {
-        z_max  <- round(max(fileInfo$data[fileInfo$mask != 0]), 2)
+        z_max  <- round(max(fileInfo$data[fileInfo$mask!=0]), 2)
       }
       
       output$cftBox <- renderUI({
@@ -359,108 +345,106 @@ observeMenu4 <- function(input, output, session) {
   # clusters
   observeEvent(input$ZclusButton, {
     
-    withProgress(message = "Calculation in progress.",
-                 detail  = "This may take a few seconds...", 
-                 value   = 0, {
-      
-      # create clusters with a test statistic threshold
-      if(fileInfo$type == "p") {
-        img_clus <- ARIbrain::cluster_threshold(
-          pval < pnorm(-input$zthres) & fileInfo$data > 0 & fileInfo$mask != 0
-        )
-      } else {
-        img_clus <- ARIbrain::cluster_threshold(
-          fileInfo$data > input$zthres & fileInfo$mask != 0
-        )
-      }            
-      
-      # find cluster labels
-      clus_labels <- sort(unique(as.vector(img_clus[img_clus > 0])), decreasing = TRUE)
-      
-      # run simple ARI analysis
-      if(fileInfo$type == "p") {
-        tblARI <- ARIbrain::ARI(
-          Pmap     = pval,
-          clusters = img_clus,
-          mask     = fileInfo$mask,
-          Statmap  = -qnorm(pval),
-          silent   = TRUE
-        )
-      } else {
-        tblARI <- ARIbrain::ARI(
-          Pmap     = pval,
-          clusters = img_clus,
-          mask     = fileInfo$mask,
-          Statmap  = fileInfo$data,
-          silent   = TRUE
-        )
-      }
-      
-      # extract clusters with positive TDP
-      tblARI <- tblARI[-dim(tblARI)[1],]
-      
-      # initialize the TDP map
-      img_tdps <- array(0, fileInfo$header$dim[2:4])
-      # update TDP map
-      for (i in clus_labels) {
-        img_tdps[img_clus == i] <- tblARI[length(clus_labels)-i+1, 4]
-      }
-      
-      if (length(clus_labels) == 1) { # one cluster only
-        
-        Vox_xyzs <- as.integer(tblARI[5:7])
-        xyzV     <- paste0("(",
-                           Vox_xyzs[1], ", ", 
-                           Vox_xyzs[2], ", ",
-                           Vox_xyzs[3], 
-                           ")")
-        MNI_xyzs <- as.integer(xyz2MNI(Vox_xyzs, fileInfo$header))
-        xyzM     <- paste0("(",  
-                           MNI_xyzs[1], ", ",
-                           MNI_xyzs[2], ", ",
-                           MNI_xyzs[3],
-                           ")")
-        
-        tblARI <- data.frame(clus = clus_labels[1],
-                             size = as.integer(tblARI[1]),
-                             tdps = tblARI[4],
-                             maxT = tblARI[8],
-                             xyzV = xyzV, 
-                             xyzM = xyzM)
-        
-      } else { # found more than one clusters
-        
-        Vox_xyzs <- matrix(as.integer(tblARI[,5:7]), length(clus_labels), 3)
-        xyzV     <- paste0("(",
-                           as.integer(Vox_xyzs[,1]), ", ",
-                           as.integer(Vox_xyzs[,2]), ", ",
-                           as.integer(Vox_xyzs[,3]), 
-                           ")")
-        MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
-        xyzM     <- paste0("(",
-                           as.integer(MNI_xyzs[,1]), ", ",
-                           as.integer(MNI_xyzs[,2]), ", ",
-                           as.integer(MNI_xyzs[,3]), 
-                           ")")
-        
-        tblARI <- data.frame(clus = clus_labels,
-                             size = as.integer(tblARI[,1]),
-                             tdps = tblARI[,4], 
-                             maxT = tblARI[,8],
-                             xyzV = xyzV, 
-                             xyzM = xyzM)
-      }
-      
-      # update cluster image
-      img_clus[img_clus == 0] <- NA
-      xyz$img_clus <- img_clus
-      # update TDP image
-      img_tdps[img_clus == 0] <- NA
-      xyz$img_tdps <- img_tdps
-      
-    })
+    withProgress(message = "Calculation in progress.", value = 0,
+                 detail  = "This may take a few seconds...", {
+                   
+                   # create clusters with a test statistic threshold
+                   if(fileInfo$type == "p") {
+                     img_clus <- ARIbrain::cluster_threshold(
+                       pval < pnorm(-input$zthres) & fileInfo$mask != 0
+                     )
+                   } else {
+                     img_clus <- ARIbrain::cluster_threshold(
+                       fileInfo$data > input$zthres & fileInfo$mask != 0
+                     )
+                   }            
+                   
+                   # find cluster labels
+                   clus_labels <- sort(unique(as.vector(img_clus[img_clus>0])), decreasing=TRUE)
+                   
+                   # run simple ARI analysis
+                   if(fileInfo$type == "p") {
+                     tblARI <- ARIbrain::ARI(
+                       Pmap     = pval,
+                       clusters = img_clus,
+                       mask     = fileInfo$mask,
+                       Statmap  = -qnorm(pval),
+                       silent   = TRUE
+                     )
+                   } else {
+                     tblARI <- ARIbrain::ARI(
+                       Pmap     = pval,
+                       clusters = img_clus,
+                       mask     = fileInfo$mask,
+                       Statmap  = fileInfo$data,
+                       silent   = TRUE
+                     )
+                   }
+                   
+                   # extract clusters with positive TDP
+                   tblARI <- tblARI[-dim(tblARI)[1],]
+                   
+                   # initialize the TDP map
+                   img_tdps <- array(0, fileInfo$header$dim[2:4])
+                   # update TDP map
+                   for (i in clus_labels) {
+                     img_tdps[img_clus==i] <- tblARI[length(clus_labels)-i+1, 4]
+                   }
+                   
+                   if (length(clus_labels) == 1) { # one cluster only
+                     
+                     Vox_xyzs <- as.integer(tblARI[5:7])
+                     xyzV     <- paste0("(",
+                                        Vox_xyzs[1], ", ", 
+                                        Vox_xyzs[2], ", ",
+                                        Vox_xyzs[3], 
+                                        ")")
+                     MNI_xyzs <- as.integer(xyz2MNI(Vox_xyzs, fileInfo$header))
+                     xyzM     <- paste0("(",  
+                                        MNI_xyzs[1], ", ",
+                                        MNI_xyzs[2], ", ",
+                                        MNI_xyzs[3],
+                                        ")")
+                     
+                     tblARI <- data.frame(clus = clus_labels[1],
+                                          size = as.integer(tblARI[1]),
+                                          tdps = tblARI[4],
+                                          maxT = tblARI[8],
+                                          xyzV = xyzV, 
+                                          xyzM = xyzM)
+                     
+                   } else { # found more than one clusters
+                     
+                     Vox_xyzs <- matrix(as.integer(tblARI[,5:7]), length(clus_labels), 3)
+                     xyzV     <- paste0("(",
+                                        as.integer(Vox_xyzs[,1]), ", ",
+                                        as.integer(Vox_xyzs[,2]), ", ",
+                                        as.integer(Vox_xyzs[,3]), 
+                                        ")")
+                     MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
+                     xyzM     <- paste0("(",
+                                        as.integer(MNI_xyzs[,1]), ", ",
+                                        as.integer(MNI_xyzs[,2]), ", ",
+                                        as.integer(MNI_xyzs[,3]), 
+                                        ")")
+                     
+                     tblARI <- data.frame(clus = clus_labels,
+                                          size = as.integer(tblARI[,1]),
+                                          tdps = tblARI[,4], 
+                                          maxT = tblARI[,8],
+                                          xyzV = xyzV, 
+                                          xyzM = xyzM)
+                   }
+                   
+                   # update cluster & TDP images
+                   img_clus[img_clus == 0] <- NA
+                   img_tdps[img_clus == 0] <- NA
+                   xyz$img_clus            <- img_clus
+                   xyz$img_tdps            <- img_tdps
+                   
+                 })
     
-    #rownames(tblARI) <- paste0("cl", clus_labels)
+    rownames(tblARI) <- paste0("cl", clus_labels)
     colnames(tblARI) <- c("Cluster",
                           "Size",
                           "TDP",
@@ -468,6 +452,7 @@ observeMenu4 <- function(input, output, session) {
                           "Voxel position<br/>(x, y, z)",
                           "MNI coordinates<br/>(x, y, z)")
     
+    # update fileInfo
     fileInfo$tblARI   <<- tblARI
     fileInfo$tblXYZ   <<- Vox_xyzs
     fileInfo$img_clus <<- img_clus
@@ -479,108 +464,110 @@ observeMenu4 <- function(input, output, session) {
   # using TDP threshold
   observeEvent(input$TDPclusButton, {
     
-    withProgress(message = "Calculation in progress.",
-                 detail  = "This may take a few seconds...", 
-                 value   = 0, {
-      
-      # find all maximal STCs with a TDP threshold
-      clusterlist <- ARIbrain::answerQuery(input$tdpthres, stcs, reslist$SIZE, marks, tdps, reslist$CHILD)
-      
-      # sort clusters by descending cluster size
-      n <- length(clusterlist)
-      if (n == 0) { # return warning if there are no clusters found
-        
-        showModal(
-          modalDialog(
-            title = "No clusters",
-            "No clusters can be formed with the given TDP threshold.
-           Please reduce the threshold."
-          )
-        )
-        return(NULL)
-        
-      } else if (n > 1) {
-        
-        cluster_sizes <- sapply(clusterlist, length)
-        d             <- diff(range(cluster_sizes))
-        maxsize       <- max(cluster_sizes)
-        if (n < 200 || d < 100000 || n*log2(d) <= sum(cluster_sizes)) {
-          clusterlist <- clusterlist[order(cluster_sizes, decreasing = TRUE)]
-        } else {
-          cluster_ord <- ARIbrain:::counting_sort(n, maxsize, cluster_sizes)
-          clusterlist <- clusterlist[cluster_ord + 1]
-        }
-        
-      }
-      
-      tblARI <- plyr::laply(1:n, function(i) {
-        clus_stat <- fileInfo$data[indexp]
-        clus_stat <- clus_stat[clusterlist[[i]]+1]
-        id_clus   <- which.max(clus_stat)
-        id_max    <- clusterlist[[i]][id_clus]+1
-        xyz_max   <- ARIbrain:::ids2xyz(as.integer(indexp[id_max]-1), fileInfo$header$dim[2:4])
-        
-        clus_size <- length(clusterlist[[i]])
-        clus_tdp  <- tdps[clusterlist[[i]][clus_size]+1]
-        unlist(c(Size       = clus_size, 
-                 FalseNull  = round(clus_size*clus_tdp), 
-                 TrueNull   = round(clus_size*(1-clus_tdp)), 
-                 ActiveProp = clus_tdp,
-                 x_max      = xyz_max[,1],
-                 y_max      = xyz_max[,2],
-                 z_max      = xyz_max[,3],
-                 maxZ       = clus_stat[id_clus]))
-      })
-      if (is.null(dim(tblARI))) tblARI <- t(as.matrix(tblARI))
-      
-      # update result table
-      if (n == 1) { # one cluster only
-        
-        Vox_xyzs <- tblARI[5:7]
-        xyzV     <- paste0("(",
-                           as.integer(Vox_xyzs[1]), ", ", 
-                           as.integer(Vox_xyzs[2]), ", ",
-                           as.integer(Vox_xyzs[3]), 
-                           ")")
-        MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
-        xyzM     <- paste0("(",
-                           as.integer(MNI_xyzs[1]), ", ",
-                           as.integer(MNI_xyzs[2]), ", ",
-                           as.integer(MNI_xyzs[3]),
-                           ")")
-        
-        tblARI <- data.frame(clus = 1,
-                             size = as.integer(tblARI[1]),
-                             tdps = tblARI[4],
-                             maxT = tblARI[8],
-                             xyzV = xyzV, 
-                             xyzM = xyzM)
-        
-      } else { # found more than one clusters
-        
-        Vox_xyzs <- matrix(as.integer(tblARI[,5:7]), n, 3)
-        xyzV     <- paste0("(",
-                           as.integer(Vox_xyzs[,1]), ", ",
-                           as.integer(Vox_xyzs[,2]), ", ",
-                           as.integer(Vox_xyzs[,3]), 
-                           ")")
-        MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
-        xyzM     <- paste0("(",
-                           as.integer(MNI_xyzs[,1]), ", ",
-                           as.integer(MNI_xyzs[,2]), ", ",
-                           as.integer(MNI_xyzs[,3]), 
-                           ")")
-        
-        tblARI <- data.frame(clus = n:1,
-                             size = as.integer(tblARI[,1]),
-                             tdps = tblARI[,4], 
-                             maxT = tblARI[,8],
-                             xyzV = xyzV, 
-                             xyzM = xyzM)
-        
-      }
-      
-    })
+    withProgress(message = "Calculation in progress.", value = 0,
+                 detail  = "This may take a few seconds...", {
+                   
+                   # find all maximal STCs with a TDP threshold
+                   clusterlist <- ARIbrain::answerQuery(input$tdpthres, stcs, reslist$SIZE, marks, tdps, reslist$CHILD)
+                   
+                   # sort clusters by descending cluster size
+                   n <- length(clusterlist)
+                   if (n == 0) { # return warning if there are no clusters found
+                     
+                     showModal(
+                       modalDialog(
+                         title = "No clusters",
+                         "No clusters can be formed with the given TDP threshold.
+                          Please reduce the threshold."
+                       )
+                     )
+                     return(NULL)
+                     
+                   } else if (n > 1) {
+                     # sort clusters in terms of size (descending order)
+                     cluster_sizes <- sapply(clusterlist, length)
+                     d             <- diff(range(cluster_sizes))
+                     maxsize       <- max(cluster_sizes)
+                     if (n < 200 || d < 100000 || n*log2(d) <= sum(cluster_sizes)) {
+                       clusterlist <- clusterlist[order(cluster_sizes, decreasing = TRUE)]
+                     } else {
+                       cluster_ord <- ARIbrain:::counting_sort(n, maxsize, cluster_sizes)
+                       clusterlist <- clusterlist[cluster_ord + 1]
+                     }
+                     
+                   }
+                   
+                   tblARI <- plyr::laply(1:n, function(i) {
+                     if (fileInfo$type == "p") {
+                       clus_stat <- -qnorm(fileInfo$data[indexp][clusterlist[[i]]+1])
+                     } else {
+                       clus_stat <- fileInfo$data[indexp][clusterlist[[i]]+1]
+                     }
+                     id_clus   <- which.max(clus_stat)
+                     id_max    <- clusterlist[[i]][id_clus]+1
+                     xyz_max   <- ARIbrain:::ids2xyz(as.integer(indexp[id_max]-1), fileInfo$header$dim[2:4])
+                     
+                     clus_size <- length(clusterlist[[i]])
+                     clus_tdp  <- tdps[clusterlist[[i]][clus_size]+1]
+                     unlist(c(Size       = clus_size, 
+                              FalseNull  = round(clus_size*clus_tdp), 
+                              TrueNull   = round(clus_size*(1-clus_tdp)), 
+                              ActiveProp = clus_tdp,
+                              x_max      = xyz_max[,1],
+                              y_max      = xyz_max[,2],
+                              z_max      = xyz_max[,3],
+                              maxZ       = clus_stat[id_clus]))
+                   })
+                   if (is.null(dim(tblARI))) tblARI <- t(as.matrix(tblARI))
+                   
+                   # update result table
+                   if (n == 1) { # one cluster only
+                     
+                     Vox_xyzs <- tblARI[5:7]
+                     xyzV     <- paste0("(",
+                                        as.integer(Vox_xyzs[1]), ", ", 
+                                        as.integer(Vox_xyzs[2]), ", ",
+                                        as.integer(Vox_xyzs[3]), 
+                                        ")")
+                     MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
+                     xyzM     <- paste0("(",
+                                        as.integer(MNI_xyzs[1]), ", ",
+                                        as.integer(MNI_xyzs[2]), ", ",
+                                        as.integer(MNI_xyzs[3]),
+                                        ")")
+                     
+                     tblARI <- data.frame(clus = 1,
+                                          size = as.integer(tblARI[1]),
+                                          tdps = tblARI[4],
+                                          maxT = tblARI[8],
+                                          xyzV = xyzV, 
+                                          xyzM = xyzM)
+                     
+                   } else { # found more than one clusters
+                     
+                     Vox_xyzs <- matrix(as.integer(tblARI[,5:7]), n, 3)
+                     xyzV     <- paste0("(",
+                                        as.integer(Vox_xyzs[,1]), ", ",
+                                        as.integer(Vox_xyzs[,2]), ", ",
+                                        as.integer(Vox_xyzs[,3]), 
+                                        ")")
+                     MNI_xyzs <- xyz2MNI(Vox_xyzs, fileInfo$header)
+                     xyzM     <- paste0("(",
+                                        as.integer(MNI_xyzs[,1]), ", ",
+                                        as.integer(MNI_xyzs[,2]), ", ",
+                                        as.integer(MNI_xyzs[,3]), 
+                                        ")")
+                     
+                     tblARI <- data.frame(clus = n:1,
+                                          size = as.integer(tblARI[,1]),
+                                          tdps = tblARI[,4], 
+                                          maxT = tblARI[,8],
+                                          xyzV = xyzV, 
+                                          xyzM = xyzM)
+                     
+                   }
+                   
+                 })
     
     rownames(tblARI) <- paste0("cl", n:1)
     colnames(tblARI) <- c("Cluster",
@@ -599,13 +586,13 @@ observeMenu4 <- function(input, output, session) {
       img_tdps[indexp[clusterlist[[i]]+1]] <- tblARI[i, 4]
     }
     
-    # update cluster image
+    # update cluster & TDP images
     img_clus[img_clus == 0] <- NA
-    xyz$img_clus <- img_clus
-    # update TDP image
     img_tdps[img_clus == 0] <- NA
-    xyz$img_tdps <- img_tdps
+    xyz$img_clus            <- img_clus
+    xyz$img_tdps            <- img_tdps
     
+    # update fileInfo
     fileInfo$tblARI   <<- tblARI
     fileInfo$tblXYZ   <<- Vox_xyzs
     fileInfo$img_clus <<- img_clus

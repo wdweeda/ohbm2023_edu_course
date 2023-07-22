@@ -35,14 +35,13 @@ observeMenu5 <- function(input, output, session) {
   isolate({updateTabItems(session, "tabs", "menu5")})
   
   # create reactive values
-  vs <- reactiveValues(x = round((fileInfo$header$dim[2]+1)/2),
-                       y = round((fileInfo$header$dim[3]+1)/2),
-                       z = round((fileInfo$header$dim[4]+1)/2),
-                       ids_clus = fileInfo$ids_clus,
+  vs <- reactiveValues(x        = round((fileInfo$header$dim[2]+1)/2),
+                       y        = round((fileInfo$header$dim[3]+1)/2),
+                       z        = round((fileInfo$header$dim[4]+1)/2),
+                       tblARI   = fileInfo$tblARI,
+                       tblXYZ   = fileInfo$tblXYZ,
                        img_clus = fileInfo$img_clus,
-                       img_tdps = fileInfo$img_tdps,
-                       tblARI = fileInfo$tblARI,
-                       tblXYZ = fileInfo$tblXYZ)
+                       img_tdps = fileInfo$img_tdps)
   
   # render TDP bound box (UI)
   output$boundBox <- renderUI({
@@ -139,25 +138,31 @@ observeMenu5 <- function(input, output, session) {
   observeEvent(input$sag_click, {
     vs$y <- round(input$sag_click$x)
     vs$z <- round(input$sag_click$y)
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   observeEvent(input$cor_click, {
     vs$x <- round(input$cor_click$x)
     vs$z <- round(input$cor_click$y)
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   observeEvent(input$axi_click, {
     vs$x <- round(input$axi_click$x)
     vs$y <- round(input$axi_click$y)
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   
   # observe event after user changing the sliders
   observeEvent(input$xslider, {
     vs$x <- input$xslider
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   observeEvent(input$yslider, {
     vs$y <- input$yslider
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   observeEvent(input$zslider, {
     vs$z <- input$zslider
+    DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
   })
   
   # render gradient maps
@@ -227,7 +232,7 @@ observeMenu5 <- function(input, output, session) {
       vs$tblARI,
       options = list(
         columnDefs = list(
-          list(className = "dt-center", targets = 1:5)
+          list(className = "dt-center", targets = 1:6)
         ),
         pageLength = 5,
         lengthMenu = c(5, 10, 15, 20)
@@ -240,15 +245,17 @@ observeMenu5 <- function(input, output, session) {
   
   # observe event after user selecting a row (cluster) in table
   observeEvent(input$resTable_rows_selected, {
-    if (!is.null(input$resTable_rows_selected)) {
-      if (is.na(vs$img_clus[vs$x, vs$y, vs$z])) {
+    if (!is.null(input$resTable_rows_selected)) { # check if a valid row is selected
+      if (is.na(vs$img_clus[vs$x, vs$y, vs$z])) { # check if 
         vs$x <- vs$tblXYZ[input$resTable_rows_selected,1]
         vs$y <- vs$tblXYZ[input$resTable_rows_selected,2]
         vs$z <- vs$tblXYZ[input$resTable_rows_selected,3] 
+        DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
       } else if (vs$img_clus[vs$x, vs$y, vs$z] != vs$tblARI[input$resTable_rows_selected,1]) {
         vs$x <- vs$tblXYZ[input$resTable_rows_selected,1]
         vs$y <- vs$tblXYZ[input$resTable_rows_selected,2]
-        vs$z <- vs$tblXYZ[input$resTable_rows_selected,3] 
+        vs$z <- vs$tblXYZ[input$resTable_rows_selected,3]
+        DT::selectRows(DTproxy, selected = dim(fileInfo$tblARI)[1]-fileInfo$img_clus[vs$x, vs$y, vs$z]+1)
       }
     }
   })
@@ -265,30 +272,18 @@ observeMenu5 <- function(input, output, session) {
   # observe event after pressing button to redo the analysis
   observeEvent(input$redoAnalysis, {
     DT::selectRows(DTproxy, selected = NULL)
-    vs$x <- round((fileInfo$header$dim[2]+1)/2)
-    vs$y <- round((fileInfo$header$dim[3]+1)/2)
-    vs$z <- round((fileInfo$header$dim[4]+1)/2)
-    vs$ids_clus <- fileInfo$ids_clus
-    vs$img_clus <- fileInfo$img_clus
-    vs$img_tdps <- fileInfo$img_tdps
+    vs$x        <- round((fileInfo$header$dim[2]+1)/2)
+    vs$y        <- round((fileInfo$header$dim[3]+1)/2)
+    vs$z        <- round((fileInfo$header$dim[4]+1)/2)
+    
     vs$tblARI   <- fileInfo$tblARI
     vs$tblXYZ   <- fileInfo$tblXYZ
+    vs$img_clus <- fileInfo$img_clus
+    vs$img_tdps <- fileInfo$img_tdps
     
     shinyjs::enable("sizePlus")
     shinyjs::enable("sizeMinus")
   })
-  
-  # observe event after changing voxel coordinates
-  observeEvent(vs$img_clus[vs$x, vs$y, vs$z], {
-    if (!is.na(vs$img_clus[vs$x, vs$y, vs$z])) {
-      DT::selectRows(
-        DTproxy, selected = which(
-          vs$ids_clus == vs$img_clus[vs$x, vs$y, vs$z]
-        )
-      )
-    }
-  })
-  
   
   # (1) observe event after pressing button to increase size
   observeEvent(input$sizePlus, {
@@ -300,7 +295,7 @@ observeMenu5 <- function(input, output, session) {
       clus1_size  <- vs$tblARI[dim(vs$tblARI)[1]-clus1_label+1, 2]
       
       # initialize a vector for marking found clusters
-      marks   <- integer(fileInfo$m)
+      marks <- integer(fileInfo$m)
       
       while (clus1_tdp > fileInfo$mintdp && 
              clus1_size == vs$tblARI[dim(vs$tblARI)[1]-clus1_label+1, 2]) {
@@ -309,7 +304,7 @@ observeMenu5 <- function(input, output, session) {
         clus1_tdp <- clus1_tdp - 0.01
         # find all maximal STCs with a TDP threshold
         clusterlist <- ARIbrain::answerQuery(clus1_tdp, fileInfo$stcs, fileInfo$reslist$SIZE, marks, fileInfo$tdps, fileInfo$reslist$CHILD)
-        # sort clusters by descending cluster size
+        # sort clusters in descending order of cluster size
         n <- length(clusterlist)
         if (n > 1) {
           cluster_sizes <- sapply(clusterlist, length)
@@ -348,12 +343,26 @@ observeMenu5 <- function(input, output, session) {
           )
         )
         return(NULL)
+        
       } else {
+        
         # update cluster table & image
         vs$tblARI[dim(vs$tblARI)[1]-clus1_label+1, 2] <- clus1_size
         vs$tblARI[dim(vs$tblARI)[1]-clus1_label+1, 3] <- fileInfo$tdps[clusterlist[[n-clus1_img[vs$x, vs$y, vs$z]+1]][clus1_size]+1]
         vs$img_clus[clus1_img == clus1_img[vs$x, vs$y, vs$z]] <- clus1_label
       }
+      
+      DT::selectRows(DTproxy, selected = dim(vs$tblARI)[1]-vs$img_clus[vs$x, vs$y, vs$z]+1)
+      
+    } else {
+      
+      showModal(
+        modalDialog(
+          title = NULL,
+          "Please select a valid cluster!"
+        )
+      )
+      return(NULL)
       
     } 
     
@@ -407,8 +416,6 @@ observeMenu5 <- function(input, output, session) {
   #       MNI_xyzs    <- xyz2MNI(Vox_xyzs, fileInfo$header)
   #       clus_tdps   <- clus_tdps[clus_size$ix]
   #       clus_size   <- clus_size$x
-  #       
-  #       vs$ids_clus <- clus_labels
   #       
   #       if (length(clus_labels) == 1) {
   #         xyzV <- paste0("(", 
@@ -536,8 +543,6 @@ observeMenu5 <- function(input, output, session) {
   #       clus_tdps   <- clus_tdps[clus_size$ix]
   #       clus_size   <- clus_size$x
   #       
-  #       vs$ids_clus <- clus_labels
-  #       
   #       if (length(clus_labels) == 1) {
   #         xyzV <- paste0("(", 
   #                        as.integer(Vox_xyzs[1]), ", ",
@@ -609,7 +614,7 @@ observeMenu5 <- function(input, output, session) {
         clus1_tdp <- clus1_tdp + 0.01
         # find all maximal STCs with a TDP threshold
         clusterlist <- ARIbrain::answerQuery(clus1_tdp, fileInfo$stcs, fileInfo$reslist$SIZE, marks, fileInfo$tdps, fileInfo$reslist$CHILD)
-        # sort clusters by descending cluster size
+        # sort clusters in descending order of cluster size
         n <- length(clusterlist)
         if (n > 1) {
           cluster_sizes <- sapply(clusterlist, length)
@@ -639,18 +644,30 @@ observeMenu5 <- function(input, output, session) {
       vs$tblARI[dim(vs$tblARI)[1]-clus1_label+1, 3] <- fileInfo$tdps[clusterlist[[n-clus1_img[vs$x, vs$y, vs$z]+1]][clus1_size]+1]
       vs$img_clus[clus1_img == clus1_img[vs$x, vs$y, vs$z]] <- clus1_label
       
+      DT::selectRows(DTproxy, selected = dim(vs$tblARI)[1]-vs$img_clus[vs$x, vs$y, vs$z]+1)
+      
       if (clus1_tdp >= 1) {
         shinyjs::disable("sizeMinus")
         showModal(
           modalDialog(
             title = NULL,
-            "max(TDP) = 1 has been reached!"
+            "max(TDP) has been reached!"
           )
         )
         return(NULL)
       }
       
-    } 
+    } else {
+      
+      showModal(
+        modalDialog(
+          title = NULL,
+          "Please select a valid cluster!"
+        )
+      )
+      return(NULL)
+      
+    }
     
   })
   

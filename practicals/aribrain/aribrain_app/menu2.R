@@ -53,11 +53,20 @@ observeMenu2 <- function(input, output, session) {
       )
     )
   })
+  
+  # create reactive values
+  xyz <- reactiveValues(
+    x = round((fileInfo$header$dim[2]+1)/2),
+    y = round((fileInfo$header$dim[3]+1)/2),
+    z = round((fileInfo$header$dim[4]+1)/2),
+    mask = fileInfo$mask
+  )
 
   # observe event after user unchecking the checkbox
   observeEvent(input$autoMask, {
 
     if(input$autoMask == FALSE) {
+      shinyjs::enable("maskFile")
       shinyjs::disable("toAnalysisButton")
       output$maskBox <- renderUI({
         box(
@@ -68,8 +77,12 @@ observeMenu2 <- function(input, output, session) {
         )
       })
     } else {
+      shinyjs::disable("maskFile")
       shinyjs::enable("toAnalysisButton")
       output$maskBox <- NULL
+      # update brain mask
+      xyz$mask       <- (!is.na(fileInfo$data)) & (fileInfo$data!=0)
+      fileInfo$mask <<- (!is.na(fileInfo$data)) & (fileInfo$data!=0)
     }
   })
 
@@ -130,7 +143,8 @@ observeMenu2 <- function(input, output, session) {
     }
     
     shinyjs::enable("toAnalysisButton")
-    
+    # update brain mask
+    xyz$mask       <- (!is.na(fileInfo$data)) & (mask!=0)
     fileInfo$mask <<- (!is.na(fileInfo$data)) & (mask!=0)
   })
   
@@ -145,13 +159,6 @@ observeMenu2 <- function(input, output, session) {
     
     shinyjs::disable("toAnalysisButton")
   })
-  
-  # create reactive values
-  xyz <- reactiveValues(
-    x = round((fileInfo$header$dim[2]+1)/2),
-    y = round((fileInfo$header$dim[3]+1)/2),
-    z = round((fileInfo$header$dim[4]+1)/2)
-  )
 
   # render image boxes (sagittal, coronal & axial views) (UI)
   output$sagBox <- renderUI({
@@ -189,19 +196,19 @@ observeMenu2 <- function(input, output, session) {
   
   # update mask plots
   output$maskSagittal <- renderPlot({
-    plotImage(fileInfo$mask, fileInfo$header$dim[2:4],
+    plotImage(xyz$mask, fileInfo$header$dim[2:4],
               xyz$x, xyz$y, xyz$z, gray.colors(64, 0, 1), 
               FALSE, zlim = c(0,1), views = c("sag"))
     abline(h = xyz$z, v = xyz$y, col = "green")
   })
   output$maskCoronal <- renderPlot({
-    plotImage(fileInfo$mask, fileInfo$header$dim[2:4],
+    plotImage(xyz$mask, fileInfo$header$dim[2:4],
               xyz$x, xyz$y, xyz$z, gray.colors(64, 0, 1),
               FALSE, zlim = c(0,1), views = c("cor"))
     abline(h = xyz$z, v = xyz$x, col = "green")
   })
   output$maskAxial <- renderPlot({
-    plotImage(fileInfo$mask, fileInfo$header$dim[2:4],
+    plotImage(xyz$mask, fileInfo$header$dim[2:4],
               xyz$x, xyz$y, xyz$z, gray.colors(64, 0, 1),
               FALSE, zlim = c(0,1), views = c("axi"))
     abline(h = xyz$y, v = xyz$x, col = "green")

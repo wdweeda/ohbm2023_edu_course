@@ -19,5 +19,5 @@ You can install the stable version of ARIbrain from [CRAN](https://cran.r-projec
 ## ARIbrain interactive exporation app
 In addition to the ARIbrain package, we have an ARIbrain-app that can be used, in addition to the normal ARI analysis, to interactively explore all clusters (for example, you can apply a different threshold for each cluster separately). For this we need an additional package `shiny` and `shinyjs`.
 
-To do this download the files in the 'aribrain-app' directory and in Rstudio run: `setwd('~/aribrain-appdir')` (where '~/aribrain-appdir' is the directory you just downloaded these files to. Then run: `shiny::runApp('~/aribrain-appdir/aribrain_app')`. You will now get in interactive mode.
+To do this download the files in the 'aribrain_app' directory and in Rstudio run: `setwd('~/aribrain_appdir')` (where '~/aribrain_appdir' is the directory you just downloaded these files to. Then run: `shiny::runApp('~/aribrain_appdir/aribrain_app')`. You will now get in interactive mode.
 

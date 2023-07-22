@@ -2,7 +2,7 @@
 ### PREREQUISITES --------------------------------------------------------------
 
 # Install latest versions of R (this code tested on 4.3.1) and RStudio
-# Install latest testing version of INLA 
+# Install latest testing version of INLA
 # If any INLA dependencies cause issues, install with dep=FALSE and just install the dependencies sp and foreach
 # Install ciftiTools, BayesfMRI, and other packages used below from CRAN
 
@@ -28,7 +28,8 @@ library(ggthemes)
 library(reshape2)
 
 main_dir <- '/path/to/files'
-subjects <- list.dirs(main_dir, full.names=FALSE, recursive = FALSE)
+data_dir <- file.path(main_dir, 'data')
+subjects <- list.dirs(data_dir, full.names=FALSE, recursive = FALSE)
 
 
 ### PREPARE FOR RUNNING MODELS -------------------------------------------------
@@ -60,20 +61,19 @@ fname_nuis <- 'Movement_Regressors.txt'
 
 
 for(subi in subjects){
-  
+
   print(paste0('~~~~~~~~~~~~~~~~ SUBJECT ',subi,' ~~~~~~~~~~~~~~~~ '))
 
-  setwd(file.path(main_dir, subi, sess))
-  if(file.exists('result1_20k.rds')) next()
+  ## Check that all data exists ---------------------------------------------
 
+  setwd(file.path(data_dir, subi, sess))
   cifti_fname <- paste0(sess, '_Atlas_MSMAll.dtseries.nii')
-
   if(!file.exists(cifti_fname)) next() #fMRI missing
   if(sum(!sapply(fnames_events, file.exists)) > 0) next() #any events missing
   if(!file.exists(fname_nuis)) next() #motion regressors missing
-    
-  ## Read and Organize Data
-  
+
+  ## Read and Organize Data  ---------------------------------------------------
+
   #read in fMRI data
   BOLD_xii <- read_cifti(cifti_fname)
   nT <- ncol(BOLD_xii)
@@ -85,7 +85,7 @@ for(subi in subjects){
 
   #read in nuisance regressors
   nuisance <- as.matrix(read.table(fname_nuis, header=FALSE))
-  
+
   #split time series into first and second halves (4 tasks per half) for computational efficiency
   start_times <- sort(sapply(onsets, function(x) x[1,1]))
   events1 <- start_times[1:4]
@@ -98,22 +98,22 @@ for(subi in subjects){
   onsets2 <- lapply(onsets2, function(x){ x[1] <- x[1] - split_at*.72 ; x }) #adjust start times of 2nd part
   nuisance1 <- nuisance[1:split_at,]
   nuisance2 <- nuisance[split_at:nT,]
-  
-  ### Estimate Model  ----------------------------------------------------------
-  
+
+  ## Estimate Spatial Bayesian GLM   -------------------------------------------
+
   help(BayesGLM)
   help(BayesGLM_cifti)
-  
+
   # Note: Multiple sessions can be jointly analyzed to obtain session-specific
   # results or cross-session average results.  See help(BayesGLM_cifti) for details
-  
-  # # Bayesian GLM (10k resolution) -- 7 minutes to compute 
+
+  # # Bayesian GLM (10k resolution) -- 7 minutes to compute
   # system.time(glm_ss <- BayesGLM_cifti(BOLD_xii1,
   #                                      brainstructures = 'left',
   #                                      onsets = onsets1,
   #                                      TR = TR,
   #                                      nuisance = nuisance1,
-  #                                      dHRF = 0, 
+  #                                      dHRF = 0,
   #                                      hpf = hpf,
   #                                      resamp_res = 10000,
   #                                      Bayes = TRUE, #default
@@ -137,14 +137,19 @@ for(subi in subjects){
                                        num.threads = 8,
                                        verbose = 1))
   saveRDS(glm_ss, file='result1_20k.rds')
-    
-  # # Bayesian GLM (32k resolution) -- 7 hours to compute 
+  # glm_ss <- readRDS(file='result1_20k.rds')
+
+  # plots estimates of activation amplitude
+  tasks <- gsub('_HRF','',glm_ss$task_names)
+  plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Subject ', subi), fname=paste0('est_',tasks))
+
+  # # Bayesian GLM (32k resolution) -- 7 hours to compute
   # system.time(glm_ss <- BayesGLM_cifti(BOLD_xii1,
   #                                      brainstructures = 'left',
   #                                      onsets = onsets1,
   #                                      TR = TR,
   #                                      nuisance = nuisance1,
-  #                                      dHRF = 0, 
+  #                                      dHRF = 0,
   #                                      hpf = hpf,
   #                                      resamp_res = NULL,
   #                                      Bayes = TRUE, #default
@@ -153,13 +158,28 @@ for(subi in subjects){
   #                                      num.threads = 8,
   #                                      verbose = 1))
   # saveRDS(glm_ss, file='result1.rds')
+
+  ## Detect and plot Activations  -----------------------------------------------
+
+  act_ss_Bayes_05 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 0.5) #detect activations significantly over 0.5% signal change
+  saveRDS(act_ss_Bayes_05, file='activations.rds')
+  #act_ss_Bayes_05 <- readRDS(file='activations.rds')
+  plot(act_ss_Bayes_05, idx=1:4, title=paste0('Activations (>0.5%), Subject ', subi), fname=paste0('act_05_',tasks))
+
+  #add up activations across subjects
+  if(subi == subjects[1])
+    act_Bayes_05_all <- act_ss_Bayes_05$activations_xii$single_session
+  else
+    act_Bayes_05_all <- act_Bayes_05_all + act_ss_Bayes_05$activations_xii$single_session
 }
-    
+
+saveRDS(act_Bayes_05_all, file=file.path(main_dir,'activations_all.rds'))
+
 
 ### EXPLORE RESULTS FOR ONE SUBJECT --------------------------------------------
 
 subi <- subjects[1]
-setwd(file.path(main_dir, subi, sess))
+setwd(file.path(data_dir, subi, sess))
 
 #read in result
 glm_ss <- readRDS(file='result1.rds')
@@ -174,19 +194,20 @@ glm_ss$task_estimates_xii$Bayes$single_session #a xifti object
 
 # Note: plot() is an alias for ciftiTools::view_xifti_surface()
 
-#interactive RGL windows
-for(k in 1:4){
-  plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=k, zlim=c(-2,2), title=paste0('Bayesian, ',tasks[k]))#, fname='estimates_Bayesian_4tasks')
-  plot(glm_ss$task_estimates_xii$classical$single_session, idx=k, zlim=c(-2,2), title=paste0('Classical, ',tasks[k]))
-}
+#interactive RGL windows (one image at a time)
+k <- 1 #first task
+plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=k, zlim=c(-2,2), title=paste0('Bayesian, ',tasks[k]))
+plot(glm_ss$task_estimates_xii$classical$single_session, idx=k, zlim=c(-2,2), title=paste0('Classical, ',tasks[k]))
 
-#interactive widget with slider (specify a range of idx)
+#interactive widget with slider (multiple images)
 plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Bayesian, ',tasks))
 plot(glm_ss$task_estimates_xii$classical$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Classical, ',tasks))
 
 #save to PNG (specify fname)
-plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Bayesian, ',tasks), fname=paste0('estimates_Bayesian_',tasks))
-plot(glm_ss$task_estimates_xii$classical$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Classical, ',tasks), fname=paste0('estimates_classical_',tasks))
+plot(glm_ss$task_estimates_xii$Bayes$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Bayesian, ',tasks),
+     fname=paste0('estimates_Bayesian_',tasks))
+plot(glm_ss$task_estimates_xii$classical$single_session, idx=1:4, zlim=c(-2,2), title=paste0('Classical, ',tasks),
+     fname=paste0('estimates_classical_',tasks))
 
 ## Visualize Design Matrix
 
@@ -194,26 +215,25 @@ X <- as.data.frame(glm_ss$design[[1]])
 X$volume <- 1:nrow(X)
 X_long <- melt(X, id.vars = 'volume', value.name = 'HRF', variable.name = 'task')
 X_long$time <- X_long$volume*0.72
-pdf('design_mat1.pdf', width=6, height=4)
-ggplot(X_long, aes(x=time, y=HRF)) + geom_line(aes(group=task, color=task)) +
-  theme_few() + scale_color_brewer(palette='Paired')
-dev.off()
+ggplot(X_long, aes(x=time, y=HRF)) + geom_line(aes(group=task, color=task), size=1) +
+  theme_few() + scale_color_brewer(palette='Set2')
 
-### IDENTIFY ACTIVATIONS --------------------------------------------
+
+### IDENTIFY SUBJECT-LEVEL ACTIVATIONS --------------------------------------------
 
 help(id_activations)
 
 # Activation Threshold = 0 (traditional hypothesis testing appraoch)
 
 act_ss_Bayes_00 <- id_activations(glm_ss, tasks = 1, alpha = 0.05, threshold = 0) # > 0% local signal change -- 15 min / task
-act_ss_classical_00 <- id_activations(glm_ss, tasks = 1, alpha = 0.05, threshold = 0, method='classical', correction='FWER') # > 0% local signal change -- 15 min / task
+act_ss_classical_00 <- id_activations(glm_ss, tasks = 1, alpha = 0.05, threshold = 0, method='classical', correction='FDR') # > 0% local signal change -- 15 min / task
 
 # Scientifically Meaningful Activation Thresholds
 
 # Bayesian activations via spatial posterior distribution
-system.time(act_ss_Bayes_05 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 0.5)) # > 0.5% local signal change -- 4 min / task
-system.time(act_ss_Bayes_1 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 1)) # > 1% local signal change -- 3 min / task
-system.time(act_ss_Bayes_2 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 2)) # > 2% local signal change -- 3 min / task
+act_ss_Bayes_05 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 0.5) # > 0.5% local signal change -- 4 min / task
+act_ss_Bayes_1 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 1) # > 1% local signal change -- 3 min / task
+act_ss_Bayes_2 <- id_activations(glm_ss, tasks = 1:4, alpha = 0.05, threshold = 2) # > 2% local signal change -- 3 min / task
 
 save(act_ss_Bayes_00, act_ss_classical_00, act_ss_Bayes_05, act_ss_Bayes_1, act_ss_Bayes_2, file='activations.RData')
 load(file='activations.RData')
@@ -231,24 +251,57 @@ act_combined <- act_ss_Bayes_05$activations_xii$single_session + act_ss_Bayes_1$
 act_combined <- ciftiTools:::convert_to_dlabel(act_combined, values = c(0,1,2,3))
 plot(act_combined, colors = c('white','blue','turquoise','yellow'), title=tasks[1])
 
-### PERFORM GROUP AVERAGES AND CONTRASTS --------------------------------------------
+
+### PLOT ACTIVATIONS RESULTS ACROSS ALL SUBJECTS -------------------------------------
 
 setwd(main_dir)
 
+#this object contains the number of subjects that show significant activation at each vertex
+act_Bayes_05_all <- readRDS(file='activations_all.rds')
+
+#convert counts to proportions
+act_Bayes_05_all <- act_Bayes_05_all/length(subjects)
+
+#set 0 to NA
+act_Bayes_05_all_mat <- as.matrix(act_Bayes_05_all)
+act_Bayes_05_all_mat[act_Bayes_05_all_mat==0] <- NA
+act_Bayes_05_all <- newdata_xifti(act_Bayes_05_all, act_Bayes_05_all_mat)
+
+#plot it
+k <- 4
+plot(act_Bayes_05_all, zlim=c(0,0.5), idx=k, title=paste0('Proportion of Subjects Active (>0.5%), ',tasks[k]), colors='viridis')
+
+
+### PERFORM GROUP AVERAGES AND CONTRASTS --------------------------------------------
+
 help(BayesGLM2)
 
-results <- file.path(subjects, sess, 'result1_20k.rds')
+setwd(main_dir)
+results <- file.path('data',subjects, sess, 'result1_20k.rds')
 
 #about 8 minutes per subject
-glm2 <- BayesGLM2(results, 
+glm2 <- BayesGLM2(results,
                   excursion_type = '>',
-                  gamma = 0.3,
+                  gamma = 0, #detect any effect size
                   alpha = 0.05,
                   num_cores = 8,
                   verbose = 2)
+glm2B <- BayesGLM2(results,
+                  excursion_type = '>',
+                  gamma = 0.5, #detect effect sizes over 0.5% signal change
+                  alpha = 0.05,
+                  num_cores = 8,
+                  verbose = 2)
+saveRDS(glm2, file='glm2.rds')
+saveRDS(glm2B, file='glm2B.rds')
+#glm2 <- readRDS(file='glm2.rds')
+#glm2B <- readRDS(file='glm2B.rds')
 
-plot(glm2$contrast_estimates_xii, idx=1:4, zlim=c(-0.3,0.3), fname=paste0('estimates_avg5_',tasks))
-plot(glm2$activations_xii, idx=1:4, fname=paste0('activations_avg5_',tasks))
+#plot the group average activations significantly greater than 0% and 0.5% signal change
+k <- 4
+plot(glm2$contrast_estimates_xii, idx=k, zlim=c(-0.5,0.5), title=paste0('Average Activation Amplitude, ',tasks[k]))
+plot(glm2$activations_xii, idx=k, title=paste0('Group Average Activation (>0%), ',tasks[k]))
+plot(glm2B$activations_xii, idx=k, title=paste0('Group Average Activation (>0.5%), ',tasks[k]))
 
 
 

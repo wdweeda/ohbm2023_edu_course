@@ -1,7 +1,11 @@
+#FSL-command-line Rscript for TDPs
+#Wouter Weeda
+#version 1.2.a
+
 ab_loaded <- require(ARIbrain,quietly = T)
 rnifti_loaded <- require(RNifti, quietly = T)
 
-cat('TDP for clusters (c) 2023\n')
+cat('True Discovery Proportions (TDP) using ARIbrain version 1.2.a\n')
 
 #check for package loads
 if(!(ab_loaded & rnifti_loaded)) {
@@ -19,7 +23,7 @@ if(!(ab_loaded & rnifti_loaded)) {
 }
 
 #define valid arguments
-required_args <- c('zstat','cluster')
+required_args <- c('zstat','tstat','cluster')
 valid_args <- c('alpha','outfile','outtable','help','verbose')
 
 #get arguments
@@ -59,12 +63,15 @@ if(length(args)>0) {
 
 #print usage to console  
 if(length(args)==0) {
+  
+  valid <- FALSE 
+  
   cat('\n')
   cat('Usage:\n')
   cat('Rscript get_tdp.R --zstat=<filename> --cluster=<filename> [options]\n')
   cat('\n')
   cat('Compulsory arguments:\n')
-  cat('--zstat/tstat   filename of z-statistics file (nifti)\n')
+  cat('--zstat/tstat   filename of t/z-statistics file (nifti)\n')
   cat('--cluster       filename of cluster-index file (nifti)\n')
   cat('--df            if tstat is specified, df is also needed\n')
   cat('\n')
@@ -111,7 +118,7 @@ if(valid) {
     statdata <- zstat
     
     #make p-values
-    pvalues2 <- (1-pnorm(abs(zstat)))*2
+    pvalues2 <- ( pnorm(abs(zstat),lower.tail = F) )*2
     if(!quiet) cat(' > converted z-stats to 2-sided p-values\n')
     #print(summary(pvalues2))
 
@@ -130,8 +137,8 @@ if(valid) {
     #make p-values
     
     dft <- as.numeric(strsplit(args[grep('--df',args)],'\\=')[[1]][2])
-    pvalues2 <- ( 1 - pt(abs(tstat),df = dft) )*2
-    if(!quiet) cat(paste0(' > converted t-stats (df=',dft,'to 2-sided p-values\n'))
+    pvalues2 <- ( pt(abs(tstat),df = dft, lower.tail = F) )*2
+    if(!quiet) cat(paste0(' > converted t-stats (df=',dft,') to 2-sided p-values\n'))
     #print(summary(pvalues2))
     
     #make mask 
